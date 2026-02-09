@@ -1,0 +1,13 @@
+openai
+pymongo
+dotenv
+motor
+langchain_openai
+langgraph
+privy-client
+solana
+qrcode
+pillow
+uvicorn
+fastapi
+redis
