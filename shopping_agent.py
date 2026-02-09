@@ -16,6 +16,10 @@ from langgraph.graph.message import add_messages
 
 from rag_query import rag_search, rag_message
 
+from llm_wrapper import call_llm
+
+from event_log import log_event
+
 from cart_store import (
     load_cart,
     save_cart,
@@ -72,6 +76,7 @@ class State(TypedDict, total=False):
     messages: Annotated[List[BaseMessage], add_messages]
     thread_id: str
     business_id: str
+    turn_id: str
 
 
 # ----------------------------
@@ -128,8 +133,13 @@ async def route_intent(state: State) -> str:
     history = _router_history(state, limit=10)
     router_input = f"CONVERSATION (last 10):\n{history}\n\nLATEST USER MESSAGE:\n{user_last}\n"
 
-    resp = await router_llm.ainvoke(
-        [SystemMessage(content=ROUTER_SYSTEM), HumanMessage(content=router_input)]
+    resp = await call_llm(
+        router_llm,
+        [SystemMessage(content=ROUTER_SYSTEM), HumanMessage(content=router_input)],
+        business_id=state["business_id"],
+        thread_id=state["thread_id"],
+        turn_id=state["turn_id"],
+        agent_node="router",
     )
 
     label = (resp.content or "").strip().lower()
@@ -395,6 +405,7 @@ async def cart_clear_node(state: State) -> Dict[str, Any]:
     cart = await load_cart(thread_id, business_id)
     clear_cart(cart)
     await save_cart(cart)
+    
 
     safe_cart = serialize_cart(cart)
 
@@ -447,6 +458,7 @@ async def cart_remove_node(state: State) -> Dict[str, Any]:
 
     if after < before:
         await save_cart(cart)
+       
         msg = "Removed item."
     else:
         msg = "I couldn’t find that item in your cart."
@@ -518,6 +530,7 @@ async def cart_add_node(state: State) -> Dict[str, Any]:
         product["price"] = str(product["price"])
     add_item(cart, product, qty=int(qty))
     await save_cart(cart)
+    
 
     safe_cart = serialize_cart(cart)
     envelope = {
@@ -743,6 +756,7 @@ async def chat_turn(
     *,
     thread_id: str,
     text: str,
+    turn_id: str,
     business_id: Optional[str] = None,
     history_limit: int = 20,
 ) -> str:
@@ -768,7 +782,7 @@ async def chat_turn(
             msgs.append(HumanMessage(content=m["content"]))
 
     out = await graph.ainvoke(
-        {"thread_id": thread_id, "business_id": business_id, "messages": msgs},
+        {"thread_id": thread_id, "business_id": business_id, "messages": msgs,"turn_id": turn_id},
         config={"configurable": {"thread_id": thread_id}},
     )
 

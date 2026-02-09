@@ -7,6 +7,7 @@ import asyncio
 from db import connect_mongo, close_mongo
 from telegram_formatter import format_for_telegram
 import httpx
+import uuid
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 REDIS_HOST = os.getenv("REDIS_HOST")
@@ -84,7 +85,8 @@ async def main():
                 thread_id = str(user_id)
                 print(f"[{WORKER_ID}] thread_id={thread_id}")
                 print(f"[{WORKER_ID}] text={user_text}")
-                response = await chat_turn(thread_id=thread_id, text=user_text,business_id=business_id)
+                turn_id = str(uuid.uuid4())
+                response = await chat_turn(thread_id=thread_id, text=user_text,business_id=business_id,turn_id=turn_id)
                 print(f"[{WORKER_ID}] agent_response={response}")
                 envelope = json.loads(response)
                 messages = format_for_telegram(envelope)
