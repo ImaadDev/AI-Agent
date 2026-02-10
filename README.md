@@ -5,6 +5,8 @@ Users can ask questions about products, manage carts, and eventually complete pa
 
 The system is **LLM-native**, event-driven, and designed to scale across multiple workers and businesses.
 
+![Demo](assets/Demo.gif)
+
 ---
 
 ## Architecture Overview
