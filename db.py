@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import asyncio
 from datetime import datetime, timezone
 import hashlib
-from typing import List
+from typing import List, Dict
 
 load_dotenv()
 
