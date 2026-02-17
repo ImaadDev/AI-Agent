@@ -1,9 +1,13 @@
 # telegram_formatter.py
 
 from typing import Dict, Any, List
-
+import re
 
 CONFIDENCE_THRESHOLD = 0.5
+
+
+def strip_html(text: str) -> str:
+    return re.sub("<.*?>", "", text or "")
 
 
 def format_for_telegram(envelope: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -13,7 +17,8 @@ def format_for_telegram(envelope: Dict[str, Any]) -> List[Dict[str, Any]]:
     Returns a list of actions:
     {
       "type": "text" | "photo",
-      "content": str
+      "content": str,
+      "inline_buttons": optional
     }
     """
 
@@ -78,12 +83,48 @@ def format_for_telegram(envelope: Dict[str, Any]) -> List[Dict[str, Any]]:
     # -----------------
     if etype == "enquiry":
         data = envelope.get("data") or {}
-        if "product" in data and data["product"]:
-            products = [data["product"]]
-        else:
-            products = data.get("products") or []
+        result_type = data.get("result_type")
 
-        # 1. Images first (one per product)
+        # ==========================
+        # 🔥 SINGLE PRODUCT (CARD)
+        # ==========================
+        if result_type == "product" and data.get("product"):
+            p = data["product"]
+
+            # 1️⃣ Send main image
+            assets = p.get("suggested_asset_ids") or []
+            if assets:
+                out.append({
+                    "type": "photo",
+                    "content": assets[0]
+                })
+
+            # 2️⃣ Build card text
+            clean_desc = strip_html(p.get("description", ""))[:400]
+
+            card_text = (
+                f"*{p.get('name')}*\n"
+                f"${p.get('price')}\n\n"
+                f"{clean_desc}"
+            )
+
+            out.append({
+                "type": "text",
+                "content": card_text,
+                "inline_buttons": [
+                    [{"text": "➕ Add to Cart", "callback_data": f"add:{p.get('name')}"}],
+                    [{"text": "🛒 View Cart", "callback_data": "view_cart"}]
+                ]
+            })
+
+            return out
+
+        # ==========================
+        # MULTIPLE PRODUCTS (UNCHANGED)
+        # ==========================
+        products = data.get("products") or []
+
+        # 1️⃣ Images first
         for p in products:
             confidence = float(p.get("confidence") or 0.0)
             if confidence < CONFIDENCE_THRESHOLD:
@@ -93,10 +134,10 @@ def format_for_telegram(envelope: Dict[str, Any]) -> List[Dict[str, Any]]:
             if assets:
                 out.append({
                     "type": "photo",
-                    "content": assets[0],  # one image per product
+                    "content": assets[0],
                 })
 
-        # 2. Then the text message
+        # 2️⃣ Then message text
         out.append({
             "type": "text",
             "content": envelope.get("message", "")
@@ -111,4 +152,5 @@ def format_for_telegram(envelope: Dict[str, Any]) -> List[Dict[str, Any]]:
         "type": "text",
         "content": envelope.get("message", "")
     })
+
     return out

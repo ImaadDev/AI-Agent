@@ -60,6 +60,12 @@ async def send_telegram_message(chat_id: int, msg: dict, worker_id: str, trace_i
                     "parse_mode": "Markdown",
                     "reply_markup": REPLY_KEYBOARD
                 }
+                if "inline_buttons" in msg:
+                    payload["reply_markup"] = {
+                        "inline_keyboard": msg["inline_buttons"]
+                    }
+                else:
+                    payload["reply_markup"] = REPLY_KEYBOARD
 
             elif msg["type"] == "photo":
                 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
