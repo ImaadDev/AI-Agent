@@ -30,18 +30,24 @@ from cart_store import (
     serialize_cart,
 )
 
-from payments_store import create_payment_attempt
+
+from payments_store import create_payment_attempt, load_latest_payment, update_payment_attempt
 
 from solders.keypair import Keypair
+
 from paylink import solana_pay_url, USDC_MINT_MAINNET
 
 import re
 
 from db import load_cart_db, save_cart_db
+
 from db import (
     append_conversation_message,
     load_last_conversation_messages,
 )
+
+from geocode import geocode_address, is_allowed_location
+
 load_dotenv()
 
 # ----------------------------
@@ -549,20 +555,13 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 async def payments_agent_node(state: State) -> Dict[str, Any]:
-    envelope = {
-        "type": "payments",
-        "message": "Payments not configured yet.",
-        "data": None,
-    }
-    return {"messages": [AIMessage(content=json.dumps(envelope))]}
-    '''
     thread_id = state["thread_id"]
     business_id = state.get("business_id") or DEFAULT_BUSINESS_ID
 
     cart = await load_cart(thread_id, business_id)
     summary = (cart or {}).get("summary") or {}
 
-    # 1. Guard: empty cart
+    # ---- Guard: empty cart ----
     if not summary.get("item_count") or float(summary.get("subtotal_amount", 0)) <= 0:
         envelope = {
             "type": "payments",
@@ -571,98 +570,93 @@ async def payments_agent_node(state: State) -> Dict[str, Any]:
         }
         return {"messages": [AIMessage(content=json.dumps(envelope))]}
 
-    # 2. Get latest user message
+    # ---- Get latest user message ----
     user_text = ""
     for m in reversed(state["messages"]):
         if isinstance(m, HumanMessage):
-            user_text = (m.content or "").strip().lower()
+            user_text = (m.content or "").strip()
             break
 
-    # 3. Ask payment method
-    if user_text in {"checkout", "buy", "buy my cart", "pay", "pay now"}:
-        envelope = {
-            "type": "payments",
-            "message": "Do you want to pay in fiat or USDC?",
-            "data": None,
-        }
-        return {"messages": [AIMessage(content=json.dumps(envelope))]}
+    # ---- Load latest payment attempt (if any) ----
+    latest = await load_latest_payment(thread_id, business_id)
 
-    # 4. Method selection
-    if user_text in {"usdc", "fiat"}:
-        envelope = {
-            "type": "payments",
-            "message": "What’s your email?",
-            "data": {"method": user_text},
-        }
-        return {"messages": [AIMessage(content=json.dumps(envelope))]}
-
-    # 5. Email + USDC → create payment attempt
-    if _EMAIL_RE.match(user_text):
-        subtotal = summary.get("subtotal_amount")
-        currency = (summary.get("currency") or "").upper()
-
-        if currency != "USDC":
-            envelope = {
-                "type": "payments",
-                "message": "Your cart isn’t ready for USDC yet.",
-                "data": None,
-            }
-            return {"messages": [AIMessage(content=json.dumps(envelope))]}
-
-        recipient = os.getenv("BUSINESS_ADDRESS")
-        if not recipient:
-            envelope = {
-                "type": "payments",
-                "message": "BUSINESS_ADDRESS not configured.",
-                "data": None,
-            }
-            return {"messages": [AIMessage(content=json.dumps(envelope))]}
-
-        amount_str = f"{float(subtotal):.2f}"
-        reference = str(Keypair().pubkey())
-
-        pay_url = solana_pay_url(
-            recipient=recipient,
-            amount=amount_str,
-            spl_token=USDC_MINT_MAINNET,
-            label="ChatPay",
-            message="Cart checkout",
-            reference=reference,
-        )
+    # =====================================================
+    # STEP 1: User says checkout → create attempt
+    # =====================================================
+    # =====================================================
+    # STEP 1: User says checkout → create attempt
+    # =====================================================
+    if user_text.lower() in {"checkout", "buy", "buy my cart", "pay", "pay now"}:
 
         payment = await create_payment_attempt({
             "business_id": business_id,
             "thread_id": thread_id,
-            "stage": "awaiting_payment",
-            "method": "usdc",
-            "email": user_text,
-            "amount": amount_str,
-            "currency": "USDC",
-            "reference": reference,
-            "pay_url": pay_url,
+            "stage": "awaiting_email",
+            "cart_snapshot": serialize_cart(cart),
         })
 
         envelope = {
             "type": "payments",
-            "message": "Open this link on your phone to pay with USDC:",
-            "data": {
-                "pay_url": pay_url,
-                "reference": reference,
-                "amount": amount_str,
-                "payment_id": str(payment["_id"]),
-            },
+            "message": "What’s your email?",
+            "data": {"payment_id": str(payment["_id"])},
         }
         return {"messages": [AIMessage(content=json.dumps(envelope))]}
 
-    # 6. Fallback
-    envelope = {
-        "type": "payments",
-        "message": "Say checkout to start payment.",
-        "data": None,
-    }
-    return {"messages": [AIMessage(content=json.dumps(envelope))]}
-    '''
 
+    # =====================================================
+    # STEP 2: Email entered
+    # =====================================================
+    if latest and latest.get("stage") == "awaiting_email" and _EMAIL_RE.match(user_text):
+
+        await update_payment_attempt(
+            latest["_id"],
+            business_id,
+            {
+                "stage": "awaiting_address",
+                "email": user_text,
+            },
+        )
+
+        envelope = {
+            "type": "payments",
+            "message": "What’s your delivery address?",
+            "data": None,
+        }
+        return {"messages": [AIMessage(content=json.dumps(envelope))]}
+
+
+    # =====================================================
+    # STEP 3: Address entered
+    # =====================================================
+    if latest and latest.get("stage") == "awaiting_address":
+
+        geo = await geocode_address(user_text)
+        allowed, reason = is_allowed_location(geo)
+
+        if not allowed:
+            envelope = {
+                "type": "payments",
+                "message": reason,
+                "data": None,
+            }
+            return {"messages": [AIMessage(content=json.dumps(envelope))]}
+
+        await update_payment_attempt(
+            latest["_id"],
+            business_id,
+            {
+                "stage": "address_verified",
+                "address": user_text,
+                "geo": geo,
+            },
+        )
+
+        envelope = {
+            "type": "payments",
+            "message": "Payments not configured yet.",
+            "data": None,
+        }
+        return {"messages": [AIMessage(content=json.dumps(envelope))]}
 
 
 

@@ -41,7 +41,7 @@ def format_for_telegram(envelope: Dict[str, Any]) -> List[Dict[str, Any]]:
     if etype == "payments":
         out.append({
             "type": "text",
-            "content": "Payments not configured yet."
+            "content": envelope.get("message", "")
         })
         return out
 
