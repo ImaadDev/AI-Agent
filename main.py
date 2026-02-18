@@ -98,7 +98,7 @@ async def main():
     print(f"[{WORKER_ID}] listening on chatpay_queue")
 
     connect_mongo()
-    await build_keyboard()   # 🔥 load categories once
+    await build_keyboard()
 
     try:
         while True:
@@ -109,16 +109,31 @@ async def main():
 
             _, raw = task
             print(f"\n[{WORKER_ID}] raw message:")
-            print(raw)
 
             try:
                 data = json.loads(raw)
-                message = data.get("message") or {}
-                sender = message.get("from") or {}
-                user_id = sender.get("id")
-                user_text = (message.get("text") or "").strip()
-                chat = message.get("chat") or {}
-                chat_id = chat.get("id")
+
+                callback = data.get("callback_query")
+
+                #  Handle Button Click
+                if callback:
+                    print("Callback:", callback)
+
+                    user_id = callback["from"]["id"]
+                    user_text = callback.get("data")
+                    chat_id = callback["message"]["chat"]["id"]
+
+                #  Handle Normal Message
+                else:
+                    message = data.get("message") or {}
+                    if not message:
+                        continue  
+
+                    sender = message.get("from") or {}
+                    user_id = sender.get("id")
+                    user_text = (message.get("text") or "").strip()
+                    chat = message.get("chat") or {}
+                    chat_id = chat.get("id")
 
                 thread_id = str(user_id)
 
@@ -153,7 +168,6 @@ async def main():
     finally:
         print(f"[{WORKER_ID}] shutting down")
         close_mongo()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
