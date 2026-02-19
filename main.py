@@ -162,10 +162,10 @@ async def main():
                                 "paid_at": datetime.now(timezone.utc).isoformat(),
                             },
                         )
-
+                        explorer_url = f"https://explorer.solana.com/tx/{sig}?cluster=devnet"
                         await send_telegram_message(
                             chat_id,
-                            {"type": "text", "content": "Payment was successful ✅"},
+                            {"type": "text", "content": f"Payment was successful ✅\n\n[View on Solana Explorer]({explorer_url})"},
                             WORKER_ID,
                             str(data.get("update_id"))
                         )
