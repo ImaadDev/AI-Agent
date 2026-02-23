@@ -585,7 +585,7 @@ async def payments_agent_node(state: State) -> Dict[str, Any]:
     # =====================================================
     # STEP 1 — User triggers checkout
     # =====================================================
-    if user_text.lower() in {"checkout", "buy", "buy my cart", "pay", "pay now"}:
+    if "checkout" in user_text.lower() or "pay" in user_text.lower():
 
         payment = await create_payment_attempt({
             "business_id": business_id,
