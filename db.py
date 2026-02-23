@@ -155,6 +155,10 @@ def _business_db_name(business_id: str) -> str:
 def payments(business_id: str):
     return get_business_db(business_id)["payments"]
 
+def orders(business_id: str):
+    db = get_business_db(business_id)
+    return db["orders"]
+
 async def get_categories(business_id: str) -> List[Dict[str, Any]]:
     """
     Returns all categories for a business.

@@ -7,12 +7,15 @@ import uuid
 from datetime import datetime, timezone
 
 from shopping_agent import chat_turn
-from db import connect_mongo, close_mongo, get_categories
+from db import connect_mongo, close_mongo, get_categories, payments
 from telegram_formatter import format_for_telegram
+
 from payment_check import wait_for_usdc_payment
-from payments_store import update_payment_attempt
+from payments_store import update_payment_attempt, load_latest_payment
 
 from bson import ObjectId
+
+from orders_store import create_order
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 REDIS_HOST = os.getenv("REDIS_HOST")
@@ -186,6 +189,20 @@ async def main():
                             WORKER_ID,
                             str(data.get("update_id"))
                         )
+                        
+                        payment_doc = await payments(business_id).find_one({"_id": payment_id})
+
+                        await create_order({
+                            "business_id": business_id,
+                            "thread_id": thread_id,
+                            "payment_id": payment_id,
+                            "cart_snapshot": payment_doc.get("cart_snapshot"),
+                            "email": payment_doc.get("email"),
+                            "address": payment_doc.get("address"),
+                            "country": payment_doc.get("country"),
+                            "amount": payment_doc.get("amount"),
+                            "currency": payment_doc.get("currency"),
+                        })
 
                     else:
                         payment_id = ObjectId(payment_id)
