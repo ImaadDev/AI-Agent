@@ -17,6 +17,8 @@ from bson import ObjectId
 
 from orders_store import create_order
 
+from cart_store import load_cart, clear_cart, save_cart
+
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
@@ -203,6 +205,10 @@ async def main():
                             "amount": payment_doc.get("amount"),
                             "currency": payment_doc.get("currency"),
                         })
+                        
+                        cart = await load_cart(thread_id, business_id)
+                        clear_cart(cart)
+                        await save_cart(cart)
 
                     else:
                         payment_id = ObjectId(payment_id)
