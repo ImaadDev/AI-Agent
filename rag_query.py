@@ -125,7 +125,7 @@ async def rag_search(
         gap = top1_score - top2_score
 
         # Decision rule (tune later)
-        if top1_score >= 0.45 and (gap >= 0.20 or top2 is None):
+        if top1_score >= 0.45 and (gap >= 0.05 or top1_score >= 0.60):
             best_product = top1
 
     return {
