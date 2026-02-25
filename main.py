@@ -163,6 +163,28 @@ async def main():
                     )
 
                     continue
+
+                if data.get("type") == "stripe_webhook_failed":
+
+                    metadata = data.get("metadata", {})
+                    thread_id = metadata.get("thread_id")
+                    payment_id = ObjectId(metadata.get("payment_id"))
+
+                    await update_payment_attempt(
+                        payment_id,
+                        business_id,
+                        {"stage": "failed"},
+                    )
+
+                    await send_telegram_message(
+                        int(thread_id),
+                        {"type": "text", "content": "Payment failed ❌ Please try again."},
+                        WORKER_ID,
+                        "stripe_failed"
+                    )
+
+                    continue
+
                 callback = data.get("callback_query")
 
                 if callback:
