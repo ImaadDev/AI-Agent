@@ -11,3 +11,4 @@ pillow
 uvicorn
 fastapi
 redis
+stripe

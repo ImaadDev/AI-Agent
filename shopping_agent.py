@@ -50,6 +50,8 @@ from db import (
 
 from geocode import geocode_address, is_allowed_location
 
+from stripe_pay import create_stripe_checkout
+
 load_dotenv()
 
 # ----------------------------
@@ -663,8 +665,8 @@ async def payments_agent_node(state: State) -> Dict[str, Any]:
             "message": "Do you already have stablecoins on Solana?",
             "data": {
                 "inline_buttons": [
-                    [{"text": "✅ Yes – I have USDC", "callback_data": "crypto_yes"}],
-                    [{"text": "💳 No – I need to buy crypto", "callback_data": "crypto_no"}],
+                    [{"text": "✅ Pay with USDC", "callback_data": "crypto_yes"}],
+                    [{"text": "💳 Pay with Card (Stripe)", "callback_data": "stripe"}],
                 ]
             },
         }
@@ -724,7 +726,44 @@ async def payments_agent_node(state: State) -> Dict[str, Any]:
             }
 
             return {"messages": [AIMessage(content=json.dumps(envelope))]}
+        
+        if user_text == "stripe":
 
+            subtotal = summary.get("subtotal_amount")
+            currency = "usd"
+
+            stripe_data = create_stripe_checkout(
+                amount=float(subtotal),
+                currency=currency,
+                metadata={
+                    "business_id": business_id,
+                    "thread_id": thread_id,
+                    "payment_id": str(latest["_id"]),
+                }
+            )
+
+            await update_payment_attempt(
+                latest["_id"],
+                business_id,
+                {
+                    "stage": "awaiting_stripe_payment",
+                    "payment_method": "stripe",
+                    "stripe_session_id": stripe_data["session_id"],
+                    "stripe_checkout_url": stripe_data["checkout_url"],
+                },
+            )
+
+            envelope = {
+                "type": "payments",
+                "message": f"[Click here to pay]({stripe_data['checkout_url']})",
+                "data": {
+                    "awaiting_payment": False,
+                    "stripe": True,
+                },
+            }
+
+            return {"messages": [AIMessage(content=json.dumps(envelope))]}
+        '''
         if user_text == "crypto_no":
 
             await update_payment_attempt(
@@ -743,7 +782,7 @@ async def payments_agent_node(state: State) -> Dict[str, Any]:
             }
 
             return {"messages": [AIMessage(content=json.dumps(envelope))]}
-
+        '''
     # =====================================================
     # Fallback
     # =====================================================

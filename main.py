@@ -117,6 +117,52 @@ async def main():
 
             try:
                 data = json.loads(raw)
+                if data.get("type") == "stripe_webhook":
+
+                    metadata = data.get("metadata", {})
+                    thread_id = metadata.get("thread_id")
+                    payment_id = ObjectId(metadata.get("payment_id"))
+
+                    # 1️⃣ Mark payment complete
+                    await update_payment_attempt(
+                        payment_id,
+                        business_id,
+                        {
+                            "stage": "completed",
+                            "stripe_session_id": data.get("stripe_session_id"),
+                            "paid_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+
+                    payment_doc = await payments(business_id).find_one({"_id": payment_id})
+
+                    # 2️⃣ Create order
+                    await create_order({
+                        "business_id": business_id,
+                        "thread_id": thread_id,
+                        "payment_id": payment_id,
+                        "cart_snapshot": payment_doc.get("cart_snapshot"),
+                        "email": payment_doc.get("email"),
+                        "address": payment_doc.get("address"),
+                        "country": payment_doc.get("country"),
+                        "amount": payment_doc.get("amount"),
+                        "currency": payment_doc.get("currency"),
+                    })
+
+                    # 3️⃣ Clear cart
+                    cart = await load_cart(thread_id, business_id)
+                    clear_cart(cart)
+                    await save_cart(cart)
+
+                    # 4️⃣ Send Telegram confirmation
+                    await send_telegram_message(
+                        int(thread_id),
+                        {"type": "text", "content": "Payment successful ✅ Your order has been placed!"},
+                        WORKER_ID,
+                        "stripe_webhook"
+                    )
+
+                    continue
                 callback = data.get("callback_query")
 
                 if callback:

@@ -110,7 +110,12 @@ def format_for_telegram(envelope: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         out.append({
             "type": "text",
-            "content": "\n".join(lines)
+            "content": "\n".join(lines),
+            "reply_markup": {
+                "inline_keyboard": [
+                    [{"text": "💳 Checkout", "callback_data": "checkout"}]
+                ]
+            }
         })
         return out
 
